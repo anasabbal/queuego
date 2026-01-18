@@ -1,4 +1,4 @@
-package protovol
+package protocol
 
 import (
 	"bytes"

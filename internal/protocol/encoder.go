@@ -1,4 +1,4 @@
-package protovol
+package protocol
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-func Encode(cmd Command) ([]byte, error) {
+func Encode(cmd *Command) ([]byte, error) {
 	if cmd.Type == "" {
 		return nil, errors.New("command type is required")
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"queuego/pkg/types"
 	"sync"
+	"time"
 )
 
 // queue represents a thread-safe message queue.
@@ -71,4 +72,17 @@ func (q *Queue) Clear() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.messages = []*types.Message{}
+}
+
+func (q *Queue) RemoveExpired(ttl time.Duration) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	newQueue := []*types.Message{}
+	for _, msg := range q.messages {
+		if msg.Timestamp.Add(ttl).After(time.Now()) {
+			newQueue = append(newQueue, msg)
+		}
+	}
+	q.messages = newQueue
 }
