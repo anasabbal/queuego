@@ -1,0 +1,11 @@
+Go Message Broker
+
+A lightweight **message broker** written in Go that supports basic publish/subscribe messaging.
+
+Features
+
+- Topic-based publish/subscribe
+- Message acknowledgement (ACK)
+- Simple command protocol (CONNECT, PUBLISH, SUBSCRIBE, etc.)
+- In-memory storage for fast prototyping
+- TCP-based communication
