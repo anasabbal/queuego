@@ -3,9 +3,9 @@ package storage
 import (
 	"queuego/pkg/types"
 	"sync"
+	"time"
 )
 
-// MemoryStorage provides thread-safe in-memory message persistence with optional LRU eviction.
 type MemoryStorage struct {
 	mu       sync.RWMutex
 	messages map[string]*types.Message
@@ -14,7 +14,6 @@ type MemoryStorage struct {
 	MaxSize  int
 }
 
-// NewMemoryStorage creates a new MemoryStorage with a max size (0 = unlimited).
 func NewMemoryStorage(maxSize int) *MemoryStorage {
 	return &MemoryStorage{
 		messages: make(map[string]*types.Message),
@@ -44,7 +43,6 @@ func (s *MemoryStorage) Store(msg *types.Message) error {
 	return nil
 }
 
-// evictLRU removes the oldest message (first in order slice).
 func (s *MemoryStorage) evictLRU() {
 	if len(s.order) == 0 {
 		return
@@ -57,6 +55,29 @@ func (s *MemoryStorage) evictLRU() {
 			delete(topicSet, oldestID)
 			if len(topicSet) == 0 {
 				delete(s.topics, msg.Topic)
+			}
+		}
+	}
+}
+func (s *MemoryStorage) RemoveExpired(ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+
+	for id, msg := range s.messages {
+		if !msg.Timestamp.IsZero() && msg.Timestamp.Add(ttl).Before(now) {
+			delete(s.messages, id)
+			for i, oid := range s.order {
+				if oid == id {
+					s.order = append(s.order[:i], s.order[i+1:]...)
+					break
+				}
+			}
+			if topicSet, ok := s.topics[msg.Topic]; ok {
+				delete(topicSet, id)
+				if len(topicSet) == 0 {
+					delete(s.topics, msg.Topic)
+				}
 			}
 		}
 	}
