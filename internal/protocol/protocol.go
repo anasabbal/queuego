@@ -29,6 +29,7 @@ type Command struct {
 	Topic     string      `json:"topic,omitempty"`
 	MessageID string      `json:"message_id,omitempty"`
 	Payload   []byte      `json:"payload,omitempty"`
+	Status    StatusCode
 }
 
 // response represents a broker response to a client
