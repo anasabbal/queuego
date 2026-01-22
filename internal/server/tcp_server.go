@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net"
 	"queuego/internal/broker"
 	"sync"
@@ -37,6 +38,9 @@ func (s *Server) Start() {
 			continue
 		}
 		client := NewConnection(conn.RemoteAddr().String(), conn)
+		client.Handler = s.Handler
+		log.Printf("New client connected: %s", client.ID)
+
 		s.mu.Lock()
 		s.Connections[client.ID] = client
 		s.mu.Unlock()

@@ -10,6 +10,14 @@ type Consumer struct {
 	bufferSze int
 }
 
+func NewConsumer(cfg ClientConfig) *Consumer {
+	return &Consumer{
+		Client: &Client{
+			Config: cfg,
+			active: false,
+		},
+	}
+}
 func (c *Consumer) Subscribe(topic string, handler func(msg *protocol.Command)) error {
 	cmd := &protocol.Command{
 		Type:  protocol.SUBSCRIBE,

@@ -10,12 +10,16 @@ func Encode(cmd *Command) ([]byte, error) {
 	if cmd.Type == "" {
 		return nil, errors.New("command type is required")
 	}
+	if cmd.Payload == nil {
+		cmd.Payload = []byte{}
+	}
+
 	var buf bytes.Buffer
 
-	// 1 - command type (1 byte)
+	// 1. Command type (1 byte)
 	buf.WriteByte(commandTypeToByte(cmd.Type))
 
-	// 2 - Topic
+	// 2. Topic  (uint16 length + bytes)
 	topicBytes := []byte(cmd.Topic)
 	if len(topicBytes) > 65535 {
 		return nil, errors.New("topic too long")
@@ -23,18 +27,13 @@ func Encode(cmd *Command) ([]byte, error) {
 	if err := binary.Write(&buf, binary.BigEndian, uint16(len(topicBytes))); err != nil {
 		return nil, err
 	}
+	buf.Write(topicBytes)
 
-	// 3 - Payload
-	payload := cmd.Payload
-	if payload == nil {
-		payload = []byte{}
-	}
-	if err := binary.Write(&buf, binary.BigEndian, uint32(len(payload))); err != nil {
+	// 3. Payload (uint32 length + bytes)
+	if err := binary.Write(&buf, binary.BigEndian, uint32(len(cmd.Payload))); err != nil {
 		return nil, err
 	}
-	if len(payload) > 0 {
-		buf.Write(payload)
-	}
+	buf.Write(cmd.Payload)
 
 	return buf.Bytes(), nil
 }

@@ -3,78 +3,71 @@ package protocol
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
+	"errors"
 )
 
 func Decode(data []byte) (*Command, error) {
-	if len(data) < 8 {
-		return nil, fmt.Errorf("data too short to decode: %d bytes", len(data))
+	if len(data) < 3 { // min 1 byte type + 2 bytes topic length
+		return nil, errors.New("data too short to decode")
 	}
 
 	buf := bytes.NewReader(data)
 
-	readString := func() (string, error) {
-		var length uint16
-		if err := binary.Read(buf, binary.BigEndian, &length); err != nil {
-			return "", fmt.Errorf("failed to read string length: %w", err)
-		}
-
-		if length == 0 {
-			return "", nil
-		}
-
-		strBytes := make([]byte, length)
-		n, err := buf.Read(strBytes)
-		if err != nil {
-			return "", fmt.Errorf("failed to read string bytes: %w", err)
-		}
-		if n != int(length) {
-			return "", fmt.Errorf("string length mismatch: expected %d, got %d", length, n)
-		}
-
-		return string(strBytes), nil
-	}
-
-	// read Type
-	cmdTypeStr, err := readString()
+	// 1. Command type
+	cmdTypeByte, err := buf.ReadByte()
 	if err != nil {
-		return nil, fmt.Errorf("invalid command type: %w", err)
+		return nil, err
 	}
-	if cmdTypeStr == "" {
-		return nil, fmt.Errorf("command type is empty")
-	}
-
-	// read Topic
-	topic, err := readString()
-	if err != nil {
-		return nil, fmt.Errorf("invalid topic: %w", err)
+	cmdType := byteToCommandType(cmdTypeByte)
+	if cmdType == "" {
+		return nil, errors.New("invalid command type")
 	}
 
-	// read MessageID
-	messageID, err := readString()
-	if err != nil {
-		return nil, fmt.Errorf("invalid message ID: %w", err)
+	// 2. Topic
+	var topicLen uint16
+	if err := binary.Read(buf, binary.BigEndian, &topicLen); err != nil {
+		return nil, err
 	}
+	topicBytes := make([]byte, topicLen)
+	if _, err := buf.Read(topicBytes); err != nil {
+		return nil, err
+	}
+	topic := string(topicBytes)
 
-	// read Payload
+	// 3. Payload
 	var payloadLen uint32
 	if err := binary.Read(buf, binary.BigEndian, &payloadLen); err != nil {
-		return nil, fmt.Errorf("failed to read payload length: %w", err)
+		return nil, err
 	}
-
-	if int(payloadLen) != buf.Len() {
-		return nil, fmt.Errorf("payload length mismatch: expected %d, remaining %d", payloadLen, buf.Len())
-	}
-
 	payload := make([]byte, payloadLen)
 	if _, err := buf.Read(payload); err != nil {
-		return nil, fmt.Errorf("failed to read payload: %w", err)
+		return nil, err
 	}
 
 	return &Command{
-		Type:      CommandType(cmdTypeStr),
-		Topic:     topic,
-		MessageID: messageID,
-		Payload:   payload,
+		Type:    cmdType,
+		Topic:   topic,
+		Payload: payload,
 	}, nil
+}
+
+func byteToCommandType(b byte) CommandType {
+	switch b {
+	case 0x01:
+		return CONNECT
+	case 0x02:
+		return PUBLISH
+	case 0x03:
+		return SUBSCRIBE
+	case 0x04:
+		return UNSUBSCRIBE
+	case 0x05:
+		return ACK
+	case 0x06:
+		return PING
+	case 0x07:
+		return PONG
+	default:
+		return ""
+	}
 }

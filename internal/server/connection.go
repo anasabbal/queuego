@@ -1,6 +1,10 @@
 package server
 
 import (
+	"bytes"
+	"encoding/binary"
+	"io"
+	"log"
 	"net"
 	"queuego/internal/protocol"
 	"sync"
@@ -27,24 +31,40 @@ func NewConnection(id string, conn net.Conn) *Connection {
 		Active:        true,
 		Handler:       nil,
 	}
+
 	go c.reader()
 	go c.writer()
 	return c
 }
 
 func (c *Connection) reader() {
-	for c.Active {
-		buf := make([]byte, 4096)
+	for c.IsAlive() {
+		lenBuf := make([]byte, 4)
 		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		n, err := c.Conn.Read(buf)
-		if err != nil {
+		if _, err := io.ReadFull(c.Conn, lenBuf); err != nil {
+			log.Printf("[%s] read length error: %v", c.ID, err)
+			c.Close()
+			return
+		}
+		msgLen := binary.BigEndian.Uint32(lenBuf)
+
+		if msgLen > 10*1024*1024 { // 10 MB sanity check
+			log.Printf("[%s] message too large: %d bytes", c.ID, msgLen)
 			c.Close()
 			return
 		}
 
-		cmd, err := protocol.Decode(buf[:n])
+		data := make([]byte, msgLen)
+		if _, err := io.ReadFull(c.Conn, data); err != nil {
+			log.Printf("[%s] read message error: %v", c.ID, err)
+			c.Close()
+			return
+		}
+
+		cmd, err := protocol.Decode(data)
 		if err != nil {
-			continue // ignore malformed commands
+			log.Printf("[%s] decode error: %v", c.ID, err)
+			continue
 		}
 
 		if c.Handler != nil {
@@ -52,38 +72,70 @@ func (c *Connection) reader() {
 		}
 	}
 }
-
 func (c *Connection) writer() {
-	for c.Active {
+	for c.IsAlive() {
 		select {
-		case cmd := <-c.SendChan:
-			data, err := protocol.Encode(cmd)
-			if err != nil {
+		case cmd, ok := <-c.SendChan:
+			if !ok || cmd == nil {
 				continue
 			}
+
+			data, err := protocol.Encode(cmd)
+			if err != nil {
+				log.Printf("[%s] encode failed: %v", c.ID, err)
+				continue
+			}
+
+			var buf bytes.Buffer
+			binary.Write(&buf, binary.BigEndian, uint32(len(data)))
+			buf.Write(data)
+
 			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			c.Conn.Write(data)
+			n, err := c.Conn.Write(buf.Bytes())
+			if err != nil {
+				log.Printf("[%s] write failed (%d bytes): %v", c.ID, n, err)
+				c.Close()
+				return
+			}
+
+			log.Printf("[%s] sent command %s (%d bytes)", c.ID, cmd.Type, n)
 		}
 	}
 }
 
-// Send pushes a command to the SendChan
+// Send pushes a command to SendChan safely
 func (c *Connection) Send(cmd *protocol.Command) {
+	if cmd == nil {
+		log.Printf("[%s] attempted to send nil command, skipping", c.ID)
+		return
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.Active {
-		c.SendChan <- cmd
+
+	if !c.Active {
+		log.Printf("[%s] cannot send, connection inactive", c.ID)
+		return
+	}
+
+	select {
+	case c.SendChan <- cmd:
+		log.Printf("[%s] queued command %s for sending", c.ID, cmd.Type)
+	default:
+		log.Printf("[%s] send channel full, dropping command %s", c.ID, cmd.Type)
 	}
 }
 
-// Close terminates the connection
+// Close safely closes the connection
 func (c *Connection) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	if c.Active {
 		c.Active = false
 		c.Conn.Close()
 		close(c.SendChan)
+		log.Printf("[%s] connection closed", c.ID)
 	}
 }
 

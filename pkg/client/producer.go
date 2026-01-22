@@ -10,6 +10,14 @@ type Producer struct {
 	*Client
 }
 
+func NewProducer(cfg ClientConfig) *Producer {
+	return &Producer{
+		Client: &Client{
+			Config: cfg,
+			active: false,
+		},
+	}
+}
 func (p *Producer) Publish(topic string, payload []byte) error {
 	msg := &types.Message{
 		Topic:   topic,

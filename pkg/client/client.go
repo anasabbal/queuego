@@ -1,7 +1,9 @@
 package client
 
 import (
-	"errors"
+	"bytes"
+	"encoding/binary"
+	"io"
 	"log"
 	"net"
 	"queuego/internal/protocol"
@@ -60,46 +62,60 @@ func (c *Client) Disconnect() error {
 	log.Printf("No active connection to disconnect from %s", c.Address)
 	return nil
 }
-func (c *Client) SendCommand(cmd *protocol.Command) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.active || c.Conn == nil {
-		log.Printf("Cannot send command: connection not active")
-		return errors.New("connection not active")
-	}
+func EncodeWithLength(cmd *protocol.Command) ([]byte, error) {
 	data, err := protocol.Encode(cmd)
 	if err != nil {
-		log.Printf("Failed to encode command: %v", err)
-		return err
+		return nil, err
 	}
-	err = c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.BigEndian, uint32(len(data))); err != nil {
+		return nil, err
+	}
+	buf.Write(data)
+	return buf.Bytes(), nil
+}
+
+func (c *Client) SendCommand(cmd *protocol.Command) error {
+	data, err := protocol.Encode(cmd)
 	if err != nil {
 		return err
 	}
-	n, err := c.Conn.Write(data)
-	if err != nil {
-		log.Printf("Failed to send command (%d bytes): %v", n, err)
+
+	// prepend length
+	var buf bytes.Buffer
+	if err := binary.Write(&buf, binary.BigEndian, uint32(len(data))); err != nil {
 		return err
 	}
-	log.Printf("Sent command (%d bytes) to %s", n, c.Address)
+	buf.Write(data)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_, err = c.Conn.Write(buf.Bytes())
+	if err != nil {
+		return err
+	}
+	log.Printf("Sent command (%d bytes) to %s", len(buf.Bytes()), c.Address)
 	return nil
 }
 func (c *Client) ReadResponse() (*protocol.Command, error) {
-	buf := make([]byte, 4096)
-	err := c.Conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	if err != nil {
+	lenBuf := make([]byte, 4)
+	if _, err := io.ReadFull(c.Conn, lenBuf); err != nil {
 		return nil, err
 	}
-	n, err := c.Conn.Read(buf)
-	if err != nil {
-		log.Printf("Failed to read response: %v", err)
+	msgLen := binary.BigEndian.Uint32(lenBuf)
+
+	data := make([]byte, msgLen)
+	if _, err := io.ReadFull(c.Conn, data); err != nil {
 		return nil, err
 	}
-	cmd, err := protocol.Decode(buf[:n])
+
+	cmd, err := protocol.Decode(data)
 	if err != nil {
 		log.Printf("Failed to decode response: %v", err)
 		return nil, err
 	}
-	log.Printf("Received response (%d bytes) from %s", n, c.Address)
 	return cmd, nil
 }

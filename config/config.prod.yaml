@@ -1,0 +1,19 @@
+server:
+  host: "0.0.0.0"
+  port: 9092            # TCP port the server listens on
+  maxConnections: 1000  # Maximum concurrent client connections
+
+broker:
+  maxTopics: 1000            # Maximum number of topics allowed
+  defaultQueueSize: 1000     # Messages per topic queue
+  messageTTL: 1h             # Time before message expires
+
+network:
+  readTimeout: 30s           # Socket read timeout
+  writeTimeout: 30s          # Socket write timeout
+  heartbeatInterval: 10s     # Client heartbeat interval
+
+storage:
+  type: "memory"             # memory | file
+  maxSize: 100000            # Max messages in storage
+  retentionDuration: 24h     # How long messages are retained
