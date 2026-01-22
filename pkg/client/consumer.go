@@ -55,3 +55,18 @@ func (c *Consumer) readLoop(topic string, handler func(msg *protocol.Command)) {
 		_ = c.SendCommand(ack)
 	}
 }
+
+func (c *Consumer) Unsubscribe(topic string) error {
+	cmd := &protocol.Command{
+		Type:  protocol.UNSUBSCRIBE,
+		Topic: topic,
+	}
+
+	if err := c.SendCommand(cmd); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.subscribers, topic)
+	return nil
+}
