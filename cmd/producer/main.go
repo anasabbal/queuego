@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"log"
-	"queuego/internal/protocol"
 	"queuego/pkg/client"
 	"time"
 )
@@ -29,19 +28,12 @@ func main() {
 	defer producer.Disconnect()
 
 	for i := 0; i < *count; i++ {
+		// Publish waits for ACK internally
 		if err := producer.Publish(*topic, []byte(*message)); err != nil {
 			log.Fatal(err)
 		}
 
-		// Wait for ACK
-		resp, err := producer.ReadResponse()
-		if err != nil {
-			log.Fatal("failed to read ACK:", err)
-		}
-		if resp.Type != protocol.ACK {
-			log.Fatalf("expected ACK but got %s", resp.Type)
-		}
-
+		// No second ReadResponse here — Publish already consumed the ACK
 		log.Printf("message published and ACK received on topic %s", *topic)
 	}
 }

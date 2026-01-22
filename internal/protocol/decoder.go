@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 )
 
 func Decode(data []byte) (*Command, error) {
-	if len(data) < 3 { // min 1 byte type + 2 bytes topic length
+	if len(data) < 7 { // min 1 byte type + 2 bytes topic length
 		return nil, errors.New("data too short to decode")
 	}
 
@@ -29,28 +31,28 @@ func Decode(data []byte) (*Command, error) {
 		return nil, err
 	}
 	topicBytes := make([]byte, topicLen)
-	if _, err := buf.Read(topicBytes); err != nil {
-		return nil, err
+	if _, err := io.ReadFull(buf, topicBytes); err != nil {
+		return nil, fmt.Errorf("reading topic: %w", err)
 	}
 	topic := string(topicBytes)
 
 	// 3. Payload
 	var payloadLen uint32
 	if err := binary.Read(buf, binary.BigEndian, &payloadLen); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading payload length: %w", err)
 	}
 	payload := make([]byte, payloadLen)
-	if _, err := buf.Read(payload); err != nil {
-		return nil, err
+	if payloadLen > 0 {
+		if _, err := io.ReadFull(buf, payload); err != nil {
+			return nil, fmt.Errorf("reading payload: %w", err)
+		}
 	}
-
 	return &Command{
 		Type:    cmdType,
 		Topic:   topic,
 		Payload: payload,
 	}, nil
 }
-
 func byteToCommandType(b byte) CommandType {
 	switch b {
 	case 0x01:

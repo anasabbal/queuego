@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"io"
 	"log"
 	"net"
@@ -103,18 +104,25 @@ func (c *Client) SendCommand(cmd *protocol.Command) error {
 func (c *Client) ReadResponse() (*protocol.Command, error) {
 	lenBuf := make([]byte, 4)
 	if _, err := io.ReadFull(c.Conn, lenBuf); err != nil {
+		// show reason for read length failure
+		log.Printf("ReadResponse: failed to read length prefix: %v", err)
 		return nil, err
 	}
 	msgLen := binary.BigEndian.Uint32(lenBuf)
 
 	data := make([]byte, msgLen)
 	if _, err := io.ReadFull(c.Conn, data); err != nil {
+		// log both the length we expected and the underlying error
+		log.Printf("ReadResponse: failed to read %d bytes of payload: %v", msgLen, err)
 		return nil, err
 	}
 
 	cmd, err := protocol.Decode(data)
 	if err != nil {
-		log.Printf("Failed to decode response: %v", err)
+		// debug: dump raw bytes received
+		log.Printf("ReadResponse: Failed to decode response: %v", err)
+		log.Printf("ReadResponse: raw length prefix: %s", hex.EncodeToString(lenBuf))
+		log.Printf("ReadResponse: raw payload (%d bytes): %s", len(data), hex.EncodeToString(data))
 		return nil, err
 	}
 	return cmd, nil
