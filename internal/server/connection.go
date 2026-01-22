@@ -42,7 +42,12 @@ func (c *Connection) reader() {
 		lenBuf := make([]byte, 4)
 		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		if _, err := io.ReadFull(c.Conn, lenBuf); err != nil {
-			log.Printf("[%s] read length error: %v", c.ID, err)
+			// Treat EOF/unexpected EOF as normal client close (avoid noisy log)
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				log.Printf("[%s] client closed connection", c.ID)
+			} else {
+				log.Printf("[%s] read length error: %v", c.ID, err)
+			}
 			c.Close()
 			return
 		}
@@ -56,7 +61,12 @@ func (c *Connection) reader() {
 
 		data := make([]byte, msgLen)
 		if _, err := io.ReadFull(c.Conn, data); err != nil {
-			log.Printf("[%s] read message error: %v", c.ID, err)
+			// Treat EOF/unexpected EOF as normal client close
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				log.Printf("[%s] client closed connection while reading payload", c.ID)
+			} else {
+				log.Printf("[%s] read message error: %v", c.ID, err)
+			}
 			c.Close()
 			return
 		}

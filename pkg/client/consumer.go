@@ -54,7 +54,7 @@ func (c *Consumer) readLoop(topic string, handler func(msg *protocol.Command)) {
 
 		handler(msg)
 
-		// send ACK
+		// send ACK -- use proper ACK command type
 		ack := &protocol.Command{
 			Type:      protocol.ACK,
 			MessageID: msg.MessageID,

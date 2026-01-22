@@ -9,7 +9,8 @@ import (
 )
 
 func Decode(data []byte) (*Command, error) {
-	if len(data) < 7 { // min 1 byte type + 2 bytes topic length
+	// minimum bytes: 1 (type) + 2 (topic len) + 4 (payload len) = 7
+	if len(data) < 7 {
 		return nil, errors.New("data too short to decode")
 	}
 
@@ -28,7 +29,7 @@ func Decode(data []byte) (*Command, error) {
 	// 2. Topic
 	var topicLen uint16
 	if err := binary.Read(buf, binary.BigEndian, &topicLen); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading topic length: %w", err)
 	}
 	topicBytes := make([]byte, topicLen)
 	if _, err := io.ReadFull(buf, topicBytes); err != nil {
@@ -47,12 +48,14 @@ func Decode(data []byte) (*Command, error) {
 			return nil, fmt.Errorf("reading payload: %w", err)
 		}
 	}
+
 	return &Command{
 		Type:    cmdType,
 		Topic:   topic,
 		Payload: payload,
 	}, nil
 }
+
 func byteToCommandType(b byte) CommandType {
 	switch b {
 	case 0x01:
